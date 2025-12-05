@@ -12,15 +12,25 @@ const router = express.Router();
 
 // Helper function to get authenticated Gmail client
 async function getGmailClient(userId) {
+  console.log("🔍 getGmailClient called for userId:", userId);
+
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
   const gmailConnection = await prisma.userGmail.findUnique({
     where: { authUserId: userId },
   });
 
   if (!gmailConnection || !gmailConnection.encryptedRefresh) {
-    throw new Error("GMAIL_NOT_CONNECTED");
+    throw new Error("Gmail not connected. Please connect your Gmail first.");
   }
 
   const refreshToken = decrypt(gmailConnection.encryptedRefresh);
+
+  if (!refreshToken) {
+    throw new Error("Failed to decrypt Gmail token");
+  }
 
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -32,33 +42,13 @@ async function getGmailClient(userId) {
     refresh_token: refreshToken,
   });
 
-  // ✅ Validate token before using
-  try {
-    await oauth2Client.getAccessToken();
+  // ✅ ADD: Update last used timestamp
+  await prisma.userGmail.update({
+    where: { authUserId: userId },
+    data: { lastUsedAt: new Date() },
+  });
 
-    await prisma.userGmail.update({
-      where: { authUserId: userId },
-      data: { lastUsedAt: new Date() },
-    });
-
-    return google.gmail({ version: "v1", auth: oauth2Client });
-  } catch (error) {
-    if (error.message && error.message.includes("invalid_grant")) {
-      console.error("❌ Refresh token expired for user:", userId);
-
-      // Clear invalid token
-      await prisma.userGmail.update({
-        where: { authUserId: userId },
-        data: {
-          encryptedRefresh: null,
-        },
-      });
-
-      throw new Error("GMAIL_TOKEN_EXPIRED");
-    }
-
-    throw error;
-  }
+  return google.gmail({ version: "v1", auth: oauth2Client });
 }
 
 // Helper function to parse email message
@@ -72,25 +62,39 @@ async function parseMessage(message, gmail = null) {
     return header ? header.value : "";
   };
 
-  let body = "";
+  let bodyText = "";
+  let bodyHtml = "";
   let hasAttachments = false;
   const attachments = [];
 
-  if (message.payload.body.data) {
-    body = Buffer.from(message.payload.body.data, "base64").toString("utf-8");
-  } else if (message.payload.parts) {
+  const decode = (data) => Buffer.from(data, "base64").toString("utf-8");
+
+  // 🔹 Handle body di level paling atas
+  if (message.payload?.body?.data) {
+    const mime = message.payload.mimeType || "";
+    if (mime.startsWith("text/html")) {
+      bodyHtml = decode(message.payload.body.data);
+    } else if (mime.startsWith("text/plain")) {
+      bodyText = decode(message.payload.body.data);
+    }
+  }
+
+  // 🔹 Handle parts (multipart email)
+  if (message.payload.parts) {
     for (const part of message.payload.parts) {
-      // Extract text body
-      if (part.mimeType === "text/plain" || part.mimeType === "text/html") {
-        if (part.body.data) {
-          const partBody = Buffer.from(part.body.data, "base64").toString(
-            "utf-8"
-          );
-          body += partBody + " ";
-        }
+      const mime = part.mimeType || "";
+
+      // Ambil text/plain
+      if (mime.startsWith("text/plain") && part.body?.data) {
+        bodyText = decode(part.body.data);
       }
 
-      // ✅ Detect attachments
+      // Ambil text/html (🎯 INI YANG KAMU MAU)
+      if (mime.startsWith("text/html") && part.body?.data) {
+        bodyHtml = decode(part.body.data);
+      }
+
+      // ✅ Detect attachments (jangan diutak-atik)
       if (part.filename && part.filename.length > 0) {
         hasAttachments = true;
 
@@ -99,10 +103,10 @@ async function parseMessage(message, gmail = null) {
           mimeType: part.mimeType,
           size: part.body.size || 0,
           attachmentId: part.body.attachmentId || null,
-          extractedText: "", // ✅ NEW
+          extractedText: "",
         };
 
-        // ✅ Extract PDF text if attachment is PDF and gmail client is provided
+        // (PDF handling kalau pakai gmail client, tetap seperti kode kamu sebelumnya)
         if (
           part.mimeType === "application/pdf" &&
           part.body.attachmentId &&
@@ -111,14 +115,12 @@ async function parseMessage(message, gmail = null) {
           try {
             console.log(`📄 Downloading attachment: ${part.filename}`);
 
-            // Download attachment from Gmail
             const attachment = await gmail.users.messages.attachments.get({
               userId: "me",
               messageId: message.id,
               id: part.body.attachmentId,
             });
 
-            // Extract text from PDF
             const pdfText = await pdfService.extractFromBase64(
               attachment.data.data
             );
@@ -140,6 +142,8 @@ async function parseMessage(message, gmail = null) {
     }
   }
 
+  const body = (bodyHtml || bodyText || "").trim();
+
   return {
     id: message.id,
     threadId: message.threadId,
@@ -150,13 +154,14 @@ async function parseMessage(message, gmail = null) {
     to: getHeader("To"),
     subject: getHeader("Subject"),
     date: getHeader("Date"),
-    body: body.trim(),
-    hasAttachments: hasAttachments,
-    attachments: attachments,
+    body,
+    bodyText,
+    bodyHtml,
+    hasAttachments,
+    attachments,
   };
 }
 
-// Error handler wrapper
 const handleGmailError = (handler) => async (req, res) => {
   try {
     await handler(req, res);
@@ -577,38 +582,114 @@ router.get(
   "/drafts",
   authMiddleware,
   handleGmailError(async (req, res) => {
-    const { maxResults = 10, pageToken } = req.query;
+    const maxResults = parseInt(req.query.maxResults) || 50;
     const gmail = await getGmailClient(req.user.sub);
 
-    console.log("✅ Fetching draft emails for user:", req.user.username);
+    console.log("📥 Fetching drafts...");
 
-    const response = await gmail.users.drafts.list({
+    // Step 1: Get list of drafts
+    const draftsResponse = await gmail.users.drafts.list({
       userId: "me",
-      maxResults: parseInt(maxResults),
-      pageToken: pageToken || undefined,
+      maxResults,
     });
 
-    const drafts = response.data.drafts || [];
-    const draftDetails = await Promise.all(
-      drafts.map(async (draft) => {
-        const detail = await gmail.users.drafts.get({
-          userId: "me",
-          id: draft.id,
-        });
-        return {
-          id: detail.data.id,
-          message: parseMessage(detail.data.message),
-        };
+    const draftsList = draftsResponse.data.drafts || [];
+    console.log(`📧 Found ${draftsList.length} drafts`);
+
+    if (draftsList.length === 0) {
+      return res.json({
+        success: true,
+        data: { drafts: [] },
+      });
+    }
+
+    // Step 2: Get full details for each draft
+    const drafts = await Promise.all(
+      draftsList.map(async (draft) => {
+        try {
+          const draftDetail = await gmail.users.drafts.get({
+            userId: "me",
+            id: draft.id,
+            format: "full",
+          });
+
+          const message = draftDetail.data.message;
+          const headers = message?.payload?.headers || [];
+
+          // ✅ Extract headers properly
+          const getHeader = (name) => {
+            const header = headers.find(
+              (h) => h.name.toLowerCase() === name.toLowerCase()
+            );
+            return header?.value || "";
+          };
+
+          // ✅ Extract body
+          let body = "";
+          const payload = message?.payload;
+
+          if (payload) {
+            // Check for plain text body
+            if (payload.body?.data) {
+              body = Buffer.from(payload.body.data, "base64").toString("utf-8");
+            }
+            // Check for multipart body
+            else if (payload.parts) {
+              for (const part of payload.parts) {
+                if (part.mimeType === "text/plain" && part.body?.data) {
+                  body = Buffer.from(part.body.data, "base64").toString(
+                    "utf-8"
+                  );
+                  break;
+                }
+                if (part.mimeType === "text/html" && part.body?.data) {
+                  body = Buffer.from(part.body.data, "base64").toString(
+                    "utf-8"
+                  );
+                }
+              }
+            }
+          }
+
+          // ✅ Check for attachments
+          const hasAttachments =
+            payload?.parts?.some(
+              (part) => part.filename && part.filename.length > 0
+            ) || false;
+
+          return {
+            id: draft.id,
+            messageId: message?.id,
+            threadId: message?.threadId,
+            to: getHeader("To"),
+            from: getHeader("From"),
+            subject: getHeader("Subject") || "(No Subject)",
+            snippet: message?.snippet || "",
+            body: body,
+            date: message?.internalDate
+              ? new Date(parseInt(message.internalDate)).toISOString()
+              : null,
+            hasAttachments,
+          };
+        } catch (err) {
+          console.error(`❌ Error fetching draft ${draft.id}:`, err.message);
+          return {
+            id: draft.id,
+            to: "",
+            subject: "(Error loading draft)",
+            snippet: "",
+            date: null,
+            hasAttachments: false,
+          };
+        }
       })
     );
 
-    console.log("✅ Found", draftDetails.length, "drafts");
+    console.log("✅ Drafts fetched with details");
 
     res.json({
       success: true,
-      drafts: draftDetails,
-      nextPageToken: response.data.nextPageToken,
-      resultSizeEstimate: response.data.resultSizeEstimate,
+      data: { drafts },
     });
   })
 );
@@ -617,77 +698,147 @@ router.post(
   "/save-drafts",
   authMiddleware,
   upload.array("attachments", 10),
-  handleGmailError(async (req, res) => {
-    const { to, subject, body, priority, fields, link } = req.body;
-    const gmail = await getGmailClient(req.user.sub);
+  async (req, res) => {
+    try {
+      console.log("=".repeat(50));
+      console.log("💾 SAVE DRAFT REQUEST");
+      console.log("=".repeat(50));
 
-    console.log("💾 Saving draft for:", to || "(no recipient)");
+      const { to, subject, body, fields, link } = req.body;
 
-    // Build draft message
-    const messageParts = [
-      to ? `To: ${to}` : "",
-      `Subject: ${subject || "(No Subject)"}`,
-      "MIME-Version: 1.0",
-      'Content-Type: multipart/mixed; boundary="boundary"',
-      "",
-      "--boundary",
-      "Content-Type: text/html; charset=UTF-8",
-      "",
-      `<html><body>`,
-      `<p>${(body || "").replace(/\n/g, "<br>")}</p>`,
-      priority ? `<p><strong>Priority:</strong> ${priority}</p>` : "",
-      fields ? `<p><strong>Department:</strong> ${fields}</p>` : "",
-      link ? `<p><strong>Link:</strong> <a href="${link}">${link}</a></p>` : "",
-      `</body></html>`,
-      "--boundary",
-    ].filter((line) => line !== ""); // Remove empty lines
+      console.log("📥 Request body:");
+      console.log("  - to:", to || "(empty)");
+      console.log("  - subject:", subject || "(empty)");
+      console.log("  - body length:", body?.length || 0);
+      console.log("  - fields:", fields || "(none)");
+      console.log("  - link:", link || "(none)");
+      console.log("  - attachments:", req.files?.length || 0);
+      console.log("  - user ID:", req.user?.sub);
 
-    // Add attachments if present
-    if (req.files && req.files.length > 0) {
-      console.log(`📎 Adding ${req.files.length} attachments to draft`);
-
-      for (const file of req.files) {
-        const base64Data = file.buffer.toString("base64");
-
-        messageParts.push(
-          `Content-Type: ${file.mimetype}; name="${file.originalname}"`,
-          "Content-Transfer-Encoding: base64",
-          `Content-Disposition: attachment; filename="${file.originalname}"`,
-          "",
-          base64Data,
-          "--boundary"
-        );
+      // ✅ Step 1: Get Gmail client
+      let gmail;
+      try {
+        console.log("🔗 Getting Gmail client...");
+        gmail = await getGmailClient(req.user.sub);
+        console.log("✅ Gmail client obtained");
+      } catch (gmailError) {
+        console.error("❌ Gmail client error:", gmailError.message);
+        return res.status(401).json({
+          success: false,
+          message: "Gmail connection failed. Please reconnect.",
+          code: "GMAIL_CONNECTION_FAILED",
+          error: gmailError.message,
+        });
       }
+
+      // ✅ Step 2: Build email message
+      console.log("📝 Building email message...");
+
+      const messageParts = [];
+
+      if (to && to.trim()) {
+        messageParts.push(`To: ${to.trim()}`);
+      }
+
+      messageParts.push(`Subject: ${subject || "(No Subject)"}`);
+      messageParts.push("MIME-Version: 1.0");
+      messageParts.push('Content-Type: text/html; charset="UTF-8"');
+      messageParts.push("");
+
+      // Build HTML body
+      let htmlBody = "<html><body>";
+
+      if (body && body.trim()) {
+        htmlBody += `<p>${body.replace(/\n/g, "<br>")}</p>`;
+      }
+
+      if (fields && fields.trim()) {
+        htmlBody += `<p><strong>Department:</strong> ${fields}</p>`;
+      }
+
+      if (link && link.trim()) {
+        htmlBody += `<p><strong>Link:</strong> <a href="${link}">${link}</a></p>`;
+      }
+
+      htmlBody += "</body></html>";
+      messageParts.push(htmlBody);
+
+      const email = messageParts.join("\n");
+
+      console.log("📝 Email message built, length:", email.length);
+
+      // ✅ Step 3: Encode message
+      const encodedEmail = Buffer.from(email)
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+      console.log("📝 Encoded email length:", encodedEmail.length);
+
+      // ✅ Step 4: Create draft via Gmail API
+      console.log("📤 Creating draft via Gmail API...");
+
+      let result;
+      try {
+        result = await gmail.users.drafts.create({
+          userId: "me",
+          requestBody: {
+            message: {
+              raw: encodedEmail,
+            },
+          },
+        });
+
+        console.log("✅ Draft created successfully!");
+        console.log("  - Draft ID:", result.data.id);
+      } catch (gmailApiError) {
+        console.error("❌ Gmail API error:", gmailApiError.message);
+        console.error("  - Code:", gmailApiError.code);
+        console.error("  - Errors:", JSON.stringify(gmailApiError.errors));
+
+        if (gmailApiError.code === 401) {
+          return res.status(401).json({
+            success: false,
+            message: "Gmail token expired. Please reconnect.",
+            code: "GMAIL_TOKEN_EXPIRED",
+          });
+        }
+
+        if (gmailApiError.code === 403) {
+          return res.status(403).json({
+            success: false,
+            message: "Missing Gmail compose permission.",
+            code: "MISSING_COMPOSE_SCOPE",
+          });
+        }
+
+        return res.status(500).json({
+          success: false,
+          message: "Gmail API error",
+          error: gmailApiError.message,
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Draft saved successfully",
+        draftId: result.data.id,
+      });
+    } catch (error) {
+      console.error("=".repeat(50));
+      console.error("❌ SAVE DRAFT ERROR");
+      console.error("=".repeat(50));
+      console.error("Message:", error.message);
+      console.error("Stack:", error.stack);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to save draft",
+        error: error.message,
+      });
     }
-
-    messageParts.push("--boundary--");
-
-    // Encode message
-    const email = messageParts.join("\n");
-    const encodedEmail = Buffer.from(email)
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-
-    // Save as draft via Gmail API
-    const result = await gmail.users.drafts.create({
-      userId: "me",
-      requestBody: {
-        message: {
-          raw: encodedEmail,
-        },
-      },
-    });
-
-    console.log("✅ Draft saved successfully:", result.data.id);
-
-    res.json({
-      success: true,
-      message: "Draft saved successfully",
-      draftId: result.data.id,
-    });
-  })
+  }
 );
 
 router.post(
@@ -695,7 +846,7 @@ router.post(
   authMiddleware,
   upload.array("attachments", 10), // ✅ Support up to 10 attachments
   handleGmailError(async (req, res) => {
-    const { to, subject, body, priority, fields, link } = req.body;
+    const { to, subject, body, fields, link } = req.body;
     const gmail = await getGmailClient(req.user.sub);
 
     console.log("📧 Sending email to:", to);
@@ -712,7 +863,6 @@ router.post(
       "",
       `<html><body>`,
       `<p>${body.replace(/\n/g, "<br>")}</p>`,
-      priority ? `<p><strong>Priority:</strong> ${priority}</p>` : "",
       fields ? `<p><strong>Department:</strong> ${fields}</p>` : "",
       link ? `<p><strong>Link:</strong> <a href="${link}">${link}</a></p>` : "",
       `</body></html>`,
@@ -831,6 +981,36 @@ router.get(
       nextPageToken: response.data.nextPageToken,
       resultSizeEstimate: response.data.resultSizeEstimate,
     });
+  })
+);
+
+// バ. Download attachment by message/attachment id
+router.get(
+  "/:messageId/attachments/:attachmentId",
+  authMiddleware,
+  handleGmailError(async (req, res) => {
+    const { messageId, attachmentId } = req.params;
+    const { mimeType, filename } = req.query;
+    const gmail = await getGmailClient(req.user.sub);
+
+    const attachment = await gmail.users.messages.attachments.get({
+      userId: "me",
+      messageId,
+      id: attachmentId,
+    });
+
+    const data = attachment.data?.data;
+    if (!data) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Attachment not found" });
+    }
+
+    const buffer = Buffer.from(data, "base64");
+    const safeName = (filename || "attachment").replace(/[/\\"]/g, "");
+    res.set("Content-Type", mimeType || "application/octet-stream");
+    res.set("Content-Disposition", `inline; filename="${safeName}"`);
+    res.send(buffer);
   })
 );
 

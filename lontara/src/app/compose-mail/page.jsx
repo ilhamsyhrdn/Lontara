@@ -8,12 +8,13 @@ import {
   FiSend,
   FiSave,
   FiAlertCircle,
+  FiMoreVertical,
 } from "react-icons/fi";
 import emailService from "@/services/mailManagement";
 import ProtectedRoute from "../components/Routes/ProtectedRoutes";
 import AppLayout from "../components/ui/AppLayout";
 
-export default function OutgoingMailPage() {
+export default function ComposeMailPage() {
   const [formData, setFormData] = useState({
     mailNumber: "",
     recipient: "",
@@ -26,9 +27,9 @@ export default function OutgoingMailPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const [isReply, setIsReply] = useState(false); // ✅ ADD THIS
+  const [isReply, setIsReply] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // ✅ CHECK FOR REPLY DATA ON MOUNT
   useEffect(() => {
     const replyDataStr = localStorage.getItem("replyData");
 
@@ -135,7 +136,6 @@ export default function OutgoingMailPage() {
         to: formData.recipient,
         subject: formData.subject,
         body: formData.messageBody,
-        priority: formData.priority,
         link: formData.link,
       };
 
@@ -156,7 +156,6 @@ export default function OutgoingMailPage() {
           mailNumber: "",
           recipient: "",
           subject: "",
-          priority: "Medium Priority",
           link: "",
           messageBody: "",
         });
@@ -284,7 +283,7 @@ export default function OutgoingMailPage() {
                         value={formData.recipient}
                         onChange={handleInputChange}
                         placeholder="example@email.com"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border text-black/80 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       />
                     </div>
@@ -302,7 +301,7 @@ export default function OutgoingMailPage() {
                         value={formData.subject}
                         onChange={handleInputChange}
                         placeholder="Enter Subject"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border text-black/80 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
                       />
                     </div>
@@ -386,7 +385,7 @@ export default function OutgoingMailPage() {
                       value={formData.link}
                       onChange={handleInputChange}
                       placeholder="https://example.com"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 text-black/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -401,13 +400,63 @@ export default function OutgoingMailPage() {
                       onChange={handleInputChange}
                       placeholder="Enter your message here..."
                       rows={10}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      className="w-full px-4 py-2 border text-black/80 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       required
                     />
                   </div>
 
                   {/* Action Buttons */}
                   <div className="flex justify-end gap-3">
+                    <div className="relative">
+                      <button
+                        onClick={() => setMenuOpen((p) => !p)}
+                        className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-gray-700"
+                      >
+                        <FiMoreVertical size={18} />
+                        Actions
+                      </button>
+                      {menuOpen && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                          <button
+                            onClick={() => {
+                              setMenuOpen(false);
+                              handleSendMail();
+                            }}
+                            disabled={loading}
+                            className="w-full text-left px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Send Now
+                          </button>
+                          <button
+                            onClick={() => {
+                              setMenuOpen(false);
+                              handleSaveAsDraft();
+                            }}
+                            disabled={loading}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Save Draft
+                          </button>
+                          <button
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setFormData({
+                                mailNumber: "",
+                                recipient: "",
+                                subject: "",
+                                link: "",
+                                messageBody: "",
+                              });
+                              setAttachments([]);
+                            }}
+                            disabled={loading}
+                            className="w-full text-left px-4 py-2 text-sm text-red-600  hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Clear Form
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={handleSaveAsDraft}
                       disabled={loading}

@@ -8,7 +8,7 @@ export default function LogoutModal({ isOpen, onClose, onConfirm }) {
   return (
     <>
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-50 transition-opacity"
+        className="fixed inset-0 bg-gray-200/50 bg-opacity-50 z-50 transition-opacity"
         onClick={onClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

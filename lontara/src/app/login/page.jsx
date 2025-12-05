@@ -10,10 +10,10 @@ import React, { useState, useEffect } from "react";
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ username: "", password: "" });
-  const [loginType, setLoginType] = useState("user"); 
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { login, loading, isAuthenticated, error: authError } = useAuth();
+  const { login, isAuthenticated, error: authError } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -40,10 +40,17 @@ export default function LoginPage() {
       return;
     }
 
+    setIsSubmitting(true);
+
     const result = await login(formData);
+
     if (!result.success) {
       setError(result.error || "Login failed. Please check your credentials.");
+      setIsSubmitting(false);
+      return;
     }
+
+    router.push("/main-dashboard");
   };
 
   return (
@@ -59,34 +66,7 @@ export default function LoginPage() {
           alt="Lontara Logo"
         />
 
-        {/* Login Type Selector */}
-        <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
-          <button
-            type="button"
-            onClick={() => setLoginType("user")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              loginType === "user"
-                ? "bg-white text-blue-600 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            User
-          </button>
-          <button
-            type="button"
-            onClick={() => setLoginType("admin")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              loginType === "admin"
-                ? "bg-white text-blue-600 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Admin
-          </button>
-        </div>
-
         <form onSubmit={handleSubmit} className="flex flex-col w-full max-w-xs">
-          {/* Error Message */}
           {(error || authError) && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
               <AlertCircle size={16} />
@@ -106,7 +86,7 @@ export default function LoginPage() {
               onChange={handleInputChange}
               placeholder="Username"
               className="pl-10 w-full border-b rounded-lg px-3 py-2 text-black/60 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
-              disabled={loading}
+              disabled={isSubmitting}
               required
             />
           </div>
@@ -123,11 +103,11 @@ export default function LoginPage() {
               onChange={handleInputChange}
               placeholder="Password"
               className="pl-10 w-full border-b rounded-lg px-3 py-2 text-black/60 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
-              disabled={loading}
+              disabled={isSubmitting}
               required
             />
             <span
-              onClick={() => setShowPassword(!showPassword)}
+              onClick={() => !isSubmitting && setShowPassword(!showPassword)}
               className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-400 text-sm"
             >
               {showPassword ? "🙈" : "👁️"}
@@ -137,15 +117,15 @@ export default function LoginPage() {
           <Button
             type="submit"
             className="mt-4 flex items-center justify-center gap-2"
-            disabled={loading}
+            disabled={isSubmitting}
           >
-            {loading ? (
+            {isSubmitting ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Logging in...
+              
               </>
             ) : (
-              `Login as ${loginType === "admin" ? "Admin" : "User"}`
+              "Login"
             )}
           </Button>
         </form>

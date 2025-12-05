@@ -16,16 +16,12 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className="flex-col h-screen bg-gray-50">
-
+    <div className="flex h-screen flex-col overflow-hidden bg-gray-50 ">
       <Header onMenuClick={toggleSidebar} />
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden lg:ml-0">
-        {/* Header */}
-
+      <div className="flex flex-1 overflow-hidden">
         <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
-        {/* Page Content */}
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>

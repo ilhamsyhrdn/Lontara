@@ -10,6 +10,7 @@ import {
   LogOut,
   Send,
   LayoutDashboard,
+  CheckCircle,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -32,9 +33,14 @@ const mailManagement = [
     href: "/incomingMail",
   },
   {
-    name: "Outgoing Mail",
+    name: "Compose Mail",
     icon: Send,
-    href: "/outgoing-mail",
+    href: "/compose-mail",
+  },
+  {
+    name: "Sent Mail",
+    icon: CheckCircle,
+    href: "/sent-mail",
   },
   {
     name: "Drafts",
@@ -119,7 +125,7 @@ export default function Sidebar({ isOpen, onClose }) {
       <div
         className={`
         bg-white min-h-screen shadow-lg border-r border-gray-200
-        lg:relative lg:w-64 lg:translate-x-0 lg:sticky
+         lg:w-64 lg:translate-x-0 lg:sticky
         fixed top-0 left-0 z-50 w-80 transform transition-transform duration-300 ease-in-out
         ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}
@@ -152,7 +158,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   onClick={handleLinkClick}
                   className={`flex items-center space-x-3 px-4 py-3 text-sm rounded-lg transition-colors ${
                     isActive
-                      ? "bg-blue-500 text-white/90"
+                      ? "bg-[#f97316] text-white/90"
                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                   }`}
                 >
@@ -179,7 +185,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   onClick={handleLinkClick}
                   className={`flex items-center space-x-3 px-4 py-3 text-sm rounded-lg transition-colors ${
                     isActive
-                      ? "bg-blue-500 text-white/90"
+                      ? "bg-[#f97316] text-white/90"
                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                   }`}
                 >

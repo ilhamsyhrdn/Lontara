@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { Send, Trash2, CheckCircle, RefreshCw } from "lucide-react";
-import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import Button from "../ui/button";
 import emailService from "@/services/mailManagement";
 
-const STATUS_OPTIONS = ["Unread", "In-Progress", "Done"];
+const STATUS_OPTIONS = ["Unread", "Done"];
 const STATUS_COLORS = {
-  Unread: "bg-red-100 text-red-600",
-  "In-Progress": "bg-yellow-100 text-yellow-600",
-  Done: "bg-green-100 text-green-600",
+  Unread: "bg-red-400 text-white",
+
+  Done: "bg-green-400 text-white",
 };
 
 export default function RecentMails({ onRefresh }) {
@@ -20,6 +20,7 @@ export default function RecentMails({ onRefresh }) {
   const [error, setError] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [selectedMails, setSelectedMails] = useState(new Set());
+  const router = useRouter();
 
   useEffect(() => {
     fetchRecentMails();
@@ -177,7 +178,7 @@ export default function RecentMails({ onRefresh }) {
     );
   }
 
-  // ✅ Add error state UI
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -209,24 +210,32 @@ export default function RecentMails({ onRefresh }) {
   return (
     <div className="flex flex-col gap-2">
       {mails.map((mail) => (
-        <Link
+        <div
           key={mail.id}
-          href={`/incomingMail`}
-          className="flex items-center justify-between py-3 px-4 rounded-lg bg-gray-100 hover:bg-gray-50 transition relative"
+          role="button"
+          tabIndex={0}
+          onClick={() => router.push("/incomingMail")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              router.push("/incomingMail");
+            }
+          }}
+          className={`flex items-center justify-between py-3 px-4 rounded-lg shadow-sm border transition relative ${
+            selectedMails.has(mail.id)
+              ? "border-blue-400 bg-blue-50/60 ring-1 ring-blue-100"
+              : "bg-white border-gray-200 hover:bg-gray-50"
+          }`}
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <input
               type="checkbox"
               checked={selectedMails.has(mail.id)}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
               onChange={(e) => {
-                e.preventDefault();
                 e.stopPropagation();
                 handleSelectMail(mail.id);
               }}
+              onClick={(e) => e.stopPropagation()}
               className="w-4 h-4 text-blue-500 rounded border-gray-300 flex-shrink-0"
             />
             <div className="min-w-0 flex-1">
@@ -325,10 +334,9 @@ export default function RecentMails({ onRefresh }) {
               <Send size={18} />
             </button>
           </div>
-        </Link>
+        </div>
       ))}
 
-      {/* Action Buttons - Only show when emails are selected */}
       {selectedMails.size > 0 && (
         <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
           <Button
@@ -336,14 +344,13 @@ export default function RecentMails({ onRefresh }) {
             className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white hover:bg-red-600 rounded-lg"
           >
             <Trash2 size={16} />
-            Delete ({selectedMails.size})
+
           </Button>
           <Button
             onClick={handleMarkSelectedComplete}
             className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded-lg"
           >
             <CheckCircle size={16} />
-            Mark as Complete ({selectedMails.size})
           </Button>
         </div>
       )}

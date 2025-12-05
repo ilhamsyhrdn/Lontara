@@ -19,14 +19,16 @@ export default function Header({ onMenuClick }) {
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-4 sm:px-6 py-4">
+    <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-gray-200 px-4 sm:px-6 py-4">
       <div className="flex items-center justify-between">
-        <Image src="/logo_lontara.svg" width={125} height={200} />
+        <Image src="/logo_lontara.svg" width={125} height={200} alt="Lontara logo" />
         {/* Logo Section */}
         <div className="flex items-center space-x-3">
           {/* Mobile Menu Button */}
           <button
             onClick={onMenuClick}
+            aria-label="Toggle menu"
+            data-testid="menu-toggle"
             className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
           >
             <Menu className="w-5 h-5 text-gray-600" />
@@ -40,10 +42,7 @@ export default function Header({ onMenuClick }) {
             <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
           </button>
 
-          {/* Settings - Hidden on mobile */}
-          <button className="hidden sm:block p-2 rounded-full hover:bg-gray-100 transition-colors">
-            <Settings className="w-5 h-5 text-gray-600" />
-          </button>
+          
 
           {/* User Profile */}
           <div className="flex items-center space-x-2 sm:space-x-3">

@@ -22,7 +22,7 @@ function PieCard({ title, total, data, loading }) {
         </div>
       ) : (
         <>
-          <p className="text-4xl font-bold text-blue-600 my-2">{total}</p>
+          <p className="text-4xl font-bold text-black my-2">{total}</p>
           <div className="w-full flex-grow flex items-center justify-center -my-4">
             <PieChart
               series={[{ data, innerRadius: 40, outerRadius: 80 }]}
@@ -171,42 +171,42 @@ export default function Dashboard() {
     {
       id: 0,
       value: mailStats.incoming.unread,
-      label: "Unread",
-      color: "#f97316",
+      label: "Belum Dibaca",
+      color: "#999999",
     },
     {
       id: 1,
       value: mailStats.incoming.completed,
-      label: "Completed",
-      color: "#10b981",
+      label: "Sudah Dibaca",
+      color: "#f97316",
     },
   ];
 
-  const outgoingMailData = [
-    {
-      id: 0,
-      value: mailStats.outgoing.unread,
-      label: "Unread",
-      color: "#f97316",
-    },
-    {
-      id: 1,
-      value: mailStats.outgoing.drafts,
-      label: "Drafts",
-      color: "#34d399",
-    },
-    {
-      id: 2,
-      value: mailStats.outgoing.completed,
-      label: "Completed",
-      color: "#10b981",
-    },
-  ];
+  // const outgoingMailData = [
+  //   {
+  //     id: 0,
+  //     value: mailStats.outgoing.unread,
+  //     label: "Unread",
+  //     color: "#f97316",
+  //   },
+  //   {
+  //     id: 1,
+  //     value: mailStats.outgoing.drafts,
+  //     label: "Drafts",
+  //     color: "#34d399",
+  //   },
+  //   {
+  //     id: 2,
+  //     value: mailStats.outgoing.completed,
+  //     label: "Completed",
+  //     color: "#10b981",
+  //   },
+  // ];
 
   return (
     <ProtectedRoute>
       <AppLayout>
-        <div className="p-6 min-h-screen bg-white">
+        <div className="p-6 min-h-screen bg-gray-50/">
           {/* Error Banner */}
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -226,19 +226,9 @@ export default function Dashboard() {
               Mail Overview
             </h1>
             <div className="flex items-center gap-3">
-              <button
-                onClick={fetchMailStats}
-                disabled={loading}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-              >
-                <FiRefreshCw
-                  className={`text-gray-600 ${loading ? "animate-spin" : ""}`}
-                  size={20}
-                />
-              </button>
               <Link
-                href="/outgoing-mail"
-                className="text-white text-sm bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg shadow-md font-semibold transition-colors"
+                href="/compose-mail"
+                className="text-white text-sm bg-[#f97316] hover:bg-[#f97316]/50 px-5 py-2 rounded-lg shadow-md font-semibold transition-colors"
               >
                 + Create New Mail
               </Link>
@@ -274,17 +264,20 @@ export default function Dashboard() {
               data={incomingMailData}
               loading={loading}
             />
-            <PieCard
+            {/* <PieCard
               title="Outgoing Mail"
               total={mailStats.outgoing.total}
               data={outgoingMailData}
               loading={loading}
-            />
+            /> */}
           </div>
 
           {/* Recent Mails Section */}
           <div className="flex mb-8 mt-8 justify-between items-center">
             <h1 className="text-3xl font-medium text-gray-800">Recent Mails</h1>
+          </div>
+          <div className="flex mt-8 justify-between items-center">
+            <h1 className="text-xl text-gray-800 ml-3 mb-5">Today</h1>
             <Link
               href="/incomingMail"
               className="text-md text-black/50 hover:text-black/70"
@@ -292,7 +285,6 @@ export default function Dashboard() {
               See All
             </Link>
           </div>
-          <h1 className="text-xl text-gray-800 ml-3 mb-5">Today</h1>
           <RecentMails onRefresh={fetchMailStats} />
         </div>
       </AppLayout>

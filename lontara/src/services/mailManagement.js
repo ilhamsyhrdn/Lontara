@@ -1,5 +1,8 @@
 import apiClient from "./apiClient";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
+
 class MailService {
   // ==================== GET EMAILS ====================
 
@@ -16,7 +19,40 @@ class MailService {
   }
 
   async getDraftEmails(maxResults = 50) {
-    return apiClient.get(`/user/emails/drafts?maxResults=${maxResults}`);
+    try {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("No authentication token");
+      }
+
+      console.log("📥 Calling GET /user/emails/drafts");
+
+      const response = await fetch(
+        `${API_BASE}/user/emails/drafts?maxResults=${maxResults}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("📊 Response status:", response.status);
+
+      const data = await response.json();
+      console.log("📧 Response data:", data);
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Failed to fetch drafts");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("❌ getDraftEmails error:", error);
+      throw error;
+    }
   }
 
   async getUnreadCount() {
@@ -87,10 +123,6 @@ class MailService {
       formData.append("subject", emailData.subject);
       formData.append("body", emailData.body);
 
-      if (emailData.priority) {
-        formData.append("priority", emailData.priority);
-      }
-
       if (emailData.link) {
         formData.append("link", emailData.link);
       }
@@ -109,16 +141,13 @@ class MailService {
 
       console.log("📧 Sending email to:", emailData.to);
 
-      const response = await fetch(
-        "http://localhost:5000/api/user/emails/send",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API_BASE}/user/emails/send`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
 
       console.log("📊 Response status:", response.status);
 
@@ -197,22 +226,54 @@ class MailService {
 
       const token = localStorage.getItem("token");
 
+      // ✅ ADD: Check if token exists
+      if (!token) {
+        throw new Error("No authentication token. Please login again.");
+      }
+
       console.log("💾 Saving draft");
 
-      const response = await fetch(
-        "http://localhost:5000/api/user/emails/save-drafts",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API_BASE}/user/emails/save-drafts`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
 
-      const data = await response.json();
+      // ✅ ADD: Log response for debugging
+      console.log("📊 Response status:", response.status);
+
+      const contentType = response.headers.get("content-type");
+
+      if (contentType && contentType.includes("text/html")) {
+        throw new Error(
+          `Server error (${response.status}): Backend returned HTML. Check backend logs.`
+        );
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        // ✅ ADD: More detailed error
+        console.error("Parse error:", parseError);
+        throw new Error("Invalid response from server");
+      }
 
       if (!response.ok) {
+        // ✅ ADD: Token expiration handling
+        if (data.code === "TOKEN_EXPIRED" || data.code === "INVALID_TOKEN") {
+          localStorage.removeItem("token");
+          throw new Error("Your session has expired. Redirecting to login...");
+        }
+
+        if (data.code === "GMAIL_TOKEN_EXPIRED") {
+          throw new Error(
+            "Your Gmail connection has expired. Please reconnect in Settings."
+          );
+        }
+
         if (data.code === "MISSING_COMPOSE_SCOPE") {
           throw new Error(
             "Missing Gmail compose permission. Please reconnect in Settings."
@@ -226,16 +287,16 @@ class MailService {
       return { success: true, data };
     } catch (error) {
       console.error("❌ Save draft error:", error);
+
+      // ✅ ADD: Auto redirect on session expiration
+      if (error.message.includes("session has expired")) {
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 2000);
+      }
+
       throw error;
     }
-  }
-
-  async replyToEmail(id, replyData) {
-    return apiClient.post(`/user/emails/${id}/reply`, replyData);
-  }
-
-  async forwardEmail(id, forwardData) {
-    return apiClient.post(`/user/emails/${id}/forward`, forwardData);
   }
 
   // ==================== DRAFTS ====================
@@ -337,11 +398,15 @@ class MailService {
   // ==================== ML CLASSIFICATION ====================
 
   async getClassifiedInbox(maxResults = 50) {
-    return apiClient.get(`/user/emails/classify-inbox?maxResults=${maxResults}`);
+    return apiClient.get(
+      `/user/emails/classify-inbox?maxResults=${maxResults}`
+    );
   }
 
   async getClassificationStats(maxResults = 50) {
-    return apiClient.get(`/user/emails/classification-stats?maxResults=${maxResults}`);
+    return apiClient.get(
+      `/user/emails/classification-stats?maxResults=${maxResults}`
+    );
   }
 
   async classifyEmail(id) {

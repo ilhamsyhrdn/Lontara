@@ -10,52 +10,49 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token"); // ✅ GANTI KE "token"
+    const token = localStorage.getItem("token");
     if (token) {
       config.headers["Authorization"] = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingInit, setLoadingInit] = useState(true);
   const [error, setError] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
     const checkUserSession = async () => {
-      const token = localStorage.getItem("token"); // ✅ GANTI KE "token"
+      const token = localStorage.getItem("token");
       if (token) {
         try {
           const response = await apiClient.get("/auth/me");
           setUser(response.data);
         } catch (err) {
-          localStorage.removeItem("token"); // ✅ GANTI KE "token"
+          localStorage.removeItem("token");
         }
       }
-      setLoading(false);
+      setLoadingInit(false);
     };
     checkUserSession();
   }, []);
 
   const login = async (credentials) => {
-    setLoading(true);
     setError(null);
     try {
       const response = await apiClient.post("/auth/login", credentials);
       const { token, user: userData } = response.data;
 
-      localStorage.setItem("token", token); // ✅ GANTI KE "token"
+      localStorage.setItem("token", token);
       setUser(userData);
 
-      console.log("✅ Token saved:", localStorage.getItem("token")); // ✅ DEBUG
+      console.log("✅ Token saved:", localStorage.getItem("token"));
 
       return { success: true, user: userData };
     } catch (err) {
@@ -64,20 +61,18 @@ export const AuthProvider = ({ children }) => {
       setError(errorMessage);
       console.error("Login Failed:", err);
       return { success: false, error: errorMessage };
-    } finally {
-      setLoading(false);
     }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("token"); // ✅ GANTI KE "token"
+    localStorage.removeItem("token");
     router.push("/login");
   };
 
   const authContextValue = {
     user,
-    loading,
+    loading: loadingInit, // 🔹 kalau masih mau dipakai di tempat lain
     error,
     isAuthenticated: !!user,
     isAdmin: user?.role === "ADMIN",
@@ -88,11 +83,9 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={authContextValue}>
-      {!loading && children}
+      {!loadingInit && children} {/* 🔹 HANYA init yang nge-block render */}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
-  return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);
