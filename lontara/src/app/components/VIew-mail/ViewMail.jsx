@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"; // ✅ ADD THIS
 import {
   FiChevronLeft,
-  FiStar,
   FiMoreVertical,
   FiCornerUpRight,
   FiBell,
@@ -17,6 +16,8 @@ export default function ViewMail({ email, onBack }) {
   const [isStarred, setIsStarred] = useState(false);
   const router = useRouter();
   const [resolvedAttachments, setResolvedAttachments] = useState([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentProgress, setAttachmentProgress] = useState({ current: 0, total: 0 });
   const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api";
 
@@ -98,6 +99,7 @@ export default function ViewMail({ email, onBack }) {
   useEffect(() => {
     if (!email?.attachments || email.attachments.length === 0) {
       setResolvedAttachments([]);
+      setAttachmentsLoading(false);
       return;
     }
     if (typeof window === "undefined") return;
@@ -108,39 +110,65 @@ export default function ViewMail({ email, onBack }) {
     const urlsToRevoke = [];
 
     (async () => {
-      const items = await Promise.all(
-        email.attachments.map(async (att) => {
-          const href = buildAttachmentUrl(att);
-          if (!href) return null;
-          try {
-            const res = await fetch(href, {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-            if (!res.ok) return null;
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            urlsToRevoke.push(url);
-            return {
-              name: att.filename || att.name || "Attachment",
-              mimeType: att.mimeType,
-              size: att.size,
-              href: url,
-            };
-          } catch (err) {
-            console.error("Failed to fetch attachment", err);
-            return null;
+      setAttachmentsLoading(true);
+      setAttachmentProgress({ current: 0, total: email.attachments.length });
+
+      const items = [];
+      
+      for (let i = 0; i < email.attachments.length; i++) {
+        const att = email.attachments[i];
+        const href = buildAttachmentUrl(att);
+        
+        if (!cancelled) {
+          setAttachmentProgress({ current: i + 1, total: email.attachments.length });
+        }
+
+        if (!href) {
+          items.push(null);
+          continue;
+        }
+        
+        try {
+          console.log(`📥 Fetching attachment ${i + 1}/${email.attachments.length}: ${att.filename}`);
+          
+          const res = await fetch(href, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          
+          if (!res.ok) {
+            items.push(null);
+            continue;
           }
-        })
-      );
+          
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          urlsToRevoke.push(url);
+          
+          items.push({
+            name: att.filename || att.name || "Attachment",
+            mimeType: att.mimeType,
+            size: att.size || blob.size,
+            href: url,
+          });
+          
+          console.log(`✅ Attachment ${i + 1} loaded: ${att.filename}`);
+        } catch (err) {
+          console.error("Failed to fetch attachment", err);
+          items.push(null);
+        }
+      }
+
       if (!cancelled) {
         setResolvedAttachments(items.filter(Boolean));
+        setAttachmentsLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
+      setAttachmentsLoading(false);
       urlsToRevoke.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [email]);
@@ -299,14 +327,7 @@ export default function ViewMail({ email, onBack }) {
                   onClick={() => setIsStarred(!isStarred)}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <FiStar
-                    size={20}
-                    className={
-                      isStarred
-                        ? "text-yellow-500 fill-yellow-500"
-                        : "text-gray-600"
-                    }
-                  />
+                
                 </button>
                 <div className="relative">
                   <button
@@ -375,27 +396,81 @@ export default function ViewMail({ email, onBack }) {
               </div>
 
               {/* Attachments */}
-              {resolvedAttachments.length > 0 && (
-                <div className="mb-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-3">
-                    Attachments ({resolvedAttachments.length})
-                  </h3>
+              {(email?.attachments?.length > 0 || resolvedAttachments.length > 0) && (
+                <div className="mb-6 border border-gray-200 rounded-xl p-4 bg-gradient-to-br from-gray-50 to-white">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                      </svg>
+                      Attachments ({email?.attachments?.length || resolvedAttachments.length})
+                    </h3>
+                    {attachmentsLoading && (
+                      <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1">
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading {attachmentProgress.current}/{attachmentProgress.total}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Loading State */}
+                  {attachmentsLoading && (
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>Fetching Attachment</span>
+                        <span>{Math.round((attachmentProgress.current / attachmentProgress.total) * 100)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-blue-600 h-1.5 rounded-full transition-all duration-300 ease-out"
+                          style={{ width: `${(attachmentProgress.current / attachmentProgress.total) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
+                    {/* Show skeleton while loading */}
+                    {attachmentsLoading && resolvedAttachments.length === 0 && (
+                      <>
+                        {Array.from({ length: email?.attachments?.length || 1 }).map((_, idx) => (
+                          <div
+                            key={`skeleton-${idx}`}
+                            className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-100 bg-white animate-pulse"
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-gray-200"></div>
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                              <div className="h-3 bg-gray-100 rounded w-1/4"></div>
+                            </div>
+                            <div className="w-16 h-8 bg-gray-200 rounded-lg"></div>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Loaded attachments */}
                     {resolvedAttachments.map((file, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center gap-3 px-3 py-2 rounded-md border border-gray-200 bg-white"
+                        className="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-100 bg-white hover:border-blue-200 hover:shadow-sm transition-all group"
                       >
-                        <span className="w-8 h-8 rounded bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500 text-xs">
-                          {file.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
+                        <span className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-xs font-semibold">
+                          {file.mimeType?.split("/")[1]?.toUpperCase().slice(0, 4) || "FILE"}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-800 truncate">
+                          <p className="text-sm text-gray-800 truncate font-medium">
                             {file.name}
                           </p>
                           {file.size && (
-                            <p className="text-xs text-gray-500">
-                              {(file.size / 1024).toFixed(1)} KB
+                            <p className="text-xs text-gray-400">
+                              {file.size > 1024 * 1024 
+                                ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                                : `${(file.size / 1024).toFixed(1)} KB`
+                              }
                             </p>
                           )}
                         </div>

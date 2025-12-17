@@ -1,20 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Send, Trash2, CheckCircle, RefreshCw } from "lucide-react";
-import Image from "next/image";
+import { useState, useEffect, useMemo } from "react";
+import { Send, Trash2, CheckCircle, RefreshCw, Mail, Calendar, ChevronRight, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
 import Button from "../ui/button";
 import emailService from "@/services/mailManagement";
 
+dayjs.extend(relativeTime);
+
 const STATUS_OPTIONS = ["Unread", "Done"];
 const STATUS_COLORS = {
-  Unread: "bg-red-400 text-white",
-
-  Done: "bg-green-400 text-white",
+  Unread: "bg-slate-100 text-slate-600 border border-slate-200",
+  Done: "bg-emerald-50 text-emerald-600 border border-emerald-200",
 };
 
-export default function RecentMails({ onRefresh }) {
+export default function RecentMails({ onRefresh, selectedDate, onDateChange, allEmails = [] }) {
   const [mails, setMails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,9 +25,56 @@ export default function RecentMails({ onRefresh }) {
   const [selectedMails, setSelectedMails] = useState(new Set());
   const router = useRouter();
 
+  // Default to today if no date selected
+  const displayDate = selectedDate || dayjs();
+  const isToday = dayjs(displayDate).isSame(dayjs(), "day");
+
   useEffect(() => {
-    fetchRecentMails();
-  }, []);
+    if (allEmails.length > 0) {
+      // Use allEmails from parent if available
+      filterAndSetMails(allEmails);
+    } else {
+      fetchRecentMails();
+    }
+  }, [allEmails, displayDate]);
+
+  const filterAndSetMails = (emails) => {
+    const targetDate = dayjs(displayDate).format("YYYY-MM-DD");
+    
+    const filteredEmails = emails.filter((email) => {
+      if (!email.date) return false;
+      try {
+        return dayjs(email.date).format("YYYY-MM-DD") === targetDate;
+      } catch {
+        return false;
+      }
+    });
+
+    // Format and limit to 5
+    const formattedMails = filteredEmails.slice(0, 5).map((email) => ({
+      id: email.id,
+      subject: email.subject || "(No Subject)",
+      senderName: extractSenderName(email.from),
+      senderEmail: email.from,
+      senderAvatar: getAvatarUrl(email.from),
+      status: email.isRead ? "Done" : "Unread",
+      date: email.date,
+      snippet: email.snippet,
+      time: formatTime(email.date),
+    }));
+
+    setMails(formattedMails);
+    setLoading(false);
+  };
+
+  const formatTime = (dateStr) => {
+    if (!dateStr) return "";
+    try {
+      return dayjs(dateStr).format("HH:mm");
+    } catch {
+      return "";
+    }
+  };
 
   const fetchRecentMails = async () => {
     try {
@@ -33,36 +83,21 @@ export default function RecentMails({ onRefresh }) {
 
       console.log("🔄 Fetching recent mails...");
 
-      const response = await emailService.getInboxEmails(5);
+      const response = await emailService.getInboxEmails(50);
       console.log("📥 Recent mails response:", response);
 
-      // ✅ FIX: Check success first
       if (!response.success) {
         throw new Error(response.error || "Failed to fetch emails");
       }
 
-      // ✅ FIX: Access data.messages
       const emails = response.data?.messages || [];
       console.log("✅ Got emails:", emails.length);
 
-      // Format emails for display
-      const formattedMails = emails.map((email) => ({
-        id: email.id,
-        subject: email.subject || "(No Subject)",
-        senderName: extractSenderName(email.from),
-        senderEmail: email.from,
-        senderAvatar: getAvatarUrl(email.from),
-        status: email.isRead ? "Done" : "Unread",
-        date: email.date,
-        snippet: email.snippet,
-      }));
-
-      setMails(formattedMails);
+      filterAndSetMails(emails);
     } catch (error) {
       console.error("❌ Error fetching recent mails:", error);
       setError(error.message);
-      setMails([]); // ✅ Set empty array on error
-    } finally {
+      setMails([]);
       setLoading(false);
     }
   };
@@ -171,9 +206,11 @@ export default function RecentMails({ onRefresh }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <RefreshCw className="animate-spin text-blue-500" size={32} />
-        <span className="ml-3 text-gray-600">Loading recent mails...</span>
+      <div className="bg-white rounded-2xl border border-gray-100 p-8">
+        <div className="flex items-center justify-center py-8">
+          <RefreshCw className="animate-spin text-orange-500" size={24} />
+          <span className="ml-3 text-gray-500 text-sm">Loading emails...</span>
+        </div>
       </div>
     );
   }
@@ -181,53 +218,117 @@ export default function RecentMails({ onRefresh }) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-red-600 mb-4">❌ {error}</p>
-        <button
-          onClick={fetchRecentMails}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-        >
-          Try Again
-        </button>
+      <div className="bg-white rounded-2xl border border-gray-100 p-8">
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
+            <Mail className="text-red-400" size={24} />
+          </div>
+          <p className="text-gray-600 mb-4 text-sm">{error}</p>
+          <button
+            onClick={fetchRecentMails}
+            className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
 
+  // Get formatted date for header
+  const getDateLabel = () => {
+    if (isToday) return "Today";
+    if (dayjs(displayDate).isSame(dayjs().subtract(1, "day"), "day")) return "Yesterday";
+    return dayjs(displayDate).format("dddd, D MMMM");
+  };
+
   if (mails.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <p>No recent emails found</p>
-        <button
-          onClick={fetchRecentMails}
-          className="mt-4 text-blue-500 hover:text-blue-600 underline"
-        >
-          Refresh
-        </button>
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
+                <Mail className="text-orange-500" size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Recent Emails</h2>
+                <p className="text-sm text-gray-400">{getDateLabel()}</p>
+              </div>
+            </div>
+            <Link
+              href="/incomingMail"
+              className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 transition-colors"
+            >
+              View All
+              <ChevronRight size={16} />
+            </Link>
+          </div>
+        </div>
+        
+        {/* Empty state */}
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+            <Calendar className="text-gray-300" size={28} />
+          </div>
+          <p className="text-gray-500 mb-1">No emails on this date</p>
+          <p className="text-gray-400 text-sm">Select another date from calendar</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {mails.map((mail) => (
-        <div
-          key={mail.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => router.push("/incomingMail")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              router.push("/incomingMail");
-            }
-          }}
-          className={`flex items-center justify-between py-3 px-4 rounded-lg shadow-sm border transition relative ${
-            selectedMails.has(mail.id)
-              ? "border-blue-400 bg-blue-50/60 ring-1 ring-blue-100"
-              : "bg-white border-gray-200 hover:bg-gray-50"
-          }`}
-        >
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
+              <Mail className="text-orange-500" size={20} />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">Recent Emails</h2>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-gray-400">{getDateLabel()}</p>
+                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">
+                  {mails.length} email{mails.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </div>
+          </div>
+          <Link
+            href="/incomingMail"
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 transition-colors"
+          >
+            View All
+            <ChevronRight size={16} />
+          </Link>
+        </div>
+      </div>
+
+      {/* Email List */}
+      <div className="divide-y divide-gray-50">
+        {mails.map((mail, index) => (
+          <div
+            key={mail.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push("/incomingMail")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                router.push("/incomingMail");
+              }
+            }}
+            className={`flex items-center gap-4 px-6 py-4 transition-all cursor-pointer group ${
+              selectedMails.has(mail.id)
+                ? "bg-orange-50/50"
+                : "hover:bg-gray-50/50"
+            }`}
+          >
+            {/* Checkbox */}
             <input
               type="checkbox"
               checked={selectedMails.has(mail.id)}
@@ -236,122 +337,154 @@ export default function RecentMails({ onRefresh }) {
                 handleSelectMail(mail.id);
               }}
               onClick={(e) => e.stopPropagation()}
-              className="w-4 h-4 text-blue-500 rounded border-gray-300 flex-shrink-0"
+              className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500 flex-shrink-0"
             />
-            <div className="min-w-0 flex-1">
-              <h3 className="font-bold text-gray-800 truncate">
-                {mail.subject}
-              </h3>
-              <p className="text-sm text-gray-400 truncate">
-                {mail.senderName}
-              </p>
-              {mail.snippet && (
-                <p className="text-xs text-gray-500 truncate mt-1">
-                  {mail.snippet}
-                </p>
-              )}
-            </div>
-          </div>
 
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
+            {/* Avatar */}
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0">
               <img
                 src={mail.senderAvatar}
                 alt={mail.senderName}
-                width={32}
-                height={32}
                 className="w-full h-full object-cover"
               />
             </div>
 
-            {/* STATUS BADGE + DROPDOWN */}
-            <div className="relative">
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <h3 className="font-medium text-gray-800 truncate text-sm">
+                  {mail.senderName}
+                </h3>
+                {mail.status === "Unread" && (
+                  <span className="w-2 h-2 rounded-full bg-orange-500 flex-shrink-0"></span>
+                )}
+              </div>
+              <p className="text-sm text-gray-600 truncate mb-0.5">
+                {mail.subject}
+              </p>
+              {mail.snippet && (
+                <p className="text-xs text-gray-400 truncate">
+                  {mail.snippet}
+                </p>
+              )}
+            </div>
+
+            {/* Right side */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Time */}
+              <div className="flex items-center gap-1 text-gray-400">
+                <Clock size={12} />
+                <span className="text-xs">{mail.time}</span>
+              </div>
+
+              {/* Status dropdown - locked when Done */}
+              <div className="relative">
+                {mail.status === "Done" ? (
+                  // Locked state - cannot change back to Unread
+                  <div
+                    className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-default ${
+                      STATUS_COLORS[mail.status]
+                    }`}
+                    title="Status locked"
+                  >
+                    <CheckCircle size={12} />
+                    {mail.status}
+                  </div>
+                ) : (
+                  // Clickable dropdown for Unread status
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOpenId((cur) => (cur === mail.id ? null : mail.id));
+                      }}
+                      className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
+                        STATUS_COLORS[mail.status]
+                      }`}
+                    >
+                      {mail.status}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`transition-transform ${
+                          openId === mail.id ? "rotate-180" : ""
+                        }`}
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+
+                    {openId === mail.id && (
+                      <div
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        className="absolute right-0 mt-1 w-32 rounded-lg border border-gray-100 bg-white shadow-lg z-20 overflow-hidden"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleChangeStatus(mail.id, "Done")}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors text-gray-500"
+                        >
+                          Mark as Done
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Forward button */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setOpenId((cur) => (cur === mail.id ? null : mail.id));
                 }}
-                className={`w-40 text-sm px-3 py-1 rounded-xl flex items-center justify-center gap-2 ${
-                  STATUS_COLORS[mail.status]
-                }`}
+                className="p-2 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                aria-label="Forward"
               >
-                {mail.status}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={`transition ${
-                    openId === mail.id ? "rotate-180" : ""
-                  }`}
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+                <Send size={14} />
               </button>
-
-              {openId === mail.id && (
-                <div
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  className="absolute right-0 mt-2 w-40 rounded-lg border border-gray-200 bg-white shadow-lg z-20"
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => handleChangeStatus(mail.id, opt)}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                        opt === mail.status
-                          ? "font-semibold text-black/70"
-                          : "text-black/50"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              className="text-gray-500 hover:text-gray-700"
-              aria-label="Forward"
-            >
-              <Send size={18} />
-            </button>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
+      {/* Action bar when items selected */}
       {selectedMails.size > 0 && (
-        <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
-          <Button
-            onClick={handleDeleteSelected}
-            className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white hover:bg-red-600 rounded-lg"
-          >
-            <Trash2 size={16} />
-
-          </Button>
-          <Button
-            onClick={handleMarkSelectedComplete}
-            className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded-lg"
-          >
-            <CheckCircle size={16} />
-          </Button>
+        <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">
+              {selectedMails.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleMarkSelectedComplete}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white text-xs hover:bg-emerald-600 rounded-lg transition-colors"
+              >
+                <CheckCircle size={14} />
+                Mark Done
+              </Button>
+              <Button
+                onClick={handleDeleteSelected}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-xs hover:bg-red-600 rounded-lg transition-colors"
+              >
+                <Trash2 size={14} />
+                Delete
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

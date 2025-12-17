@@ -603,7 +603,7 @@ export default function IncomingMailPage() {
                   />
                   <span className="ml-3 text-gray-600">
                     {useMLClassification
-                      ? "Classifying emails with ML..."
+                      ? "Classifying emails"
                       : "Loading emails..."}
                   </span>
                 </div>

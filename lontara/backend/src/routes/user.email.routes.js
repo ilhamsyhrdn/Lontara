@@ -69,47 +69,45 @@ async function parseMessage(message, gmail = null) {
 
   const decode = (data) => Buffer.from(data, "base64").toString("utf-8");
 
-  // 🔹 Handle body di level paling atas
-  if (message.payload?.body?.data) {
-    const mime = message.payload.mimeType || "";
-    if (mime.startsWith("text/html")) {
-      bodyHtml = decode(message.payload.body.data);
-    } else if (mime.startsWith("text/plain")) {
-      bodyText = decode(message.payload.body.data);
-    }
-  }
+  // 🔹 Recursive function to extract body and attachments from parts
+  const processParts = async (parts) => {
+    if (!parts || !Array.isArray(parts)) return;
 
-  // 🔹 Handle parts (multipart email)
-  if (message.payload.parts) {
-    for (const part of message.payload.parts) {
+    for (const part of parts) {
       const mime = part.mimeType || "";
 
-      // Ambil text/plain
-      if (mime.startsWith("text/plain") && part.body?.data) {
+      // 🔹 Handle nested multipart (e.g., multipart/alternative inside multipart/mixed)
+      if (mime.startsWith("multipart/") && part.parts) {
+        await processParts(part.parts);
+        continue;
+      }
+
+      // 🔹 Extract text/plain body
+      if (mime === "text/plain" && part.body?.data && !bodyText) {
         bodyText = decode(part.body.data);
       }
 
-      // Ambil text/html (🎯 INI YANG KAMU MAU)
-      if (mime.startsWith("text/html") && part.body?.data) {
+      // 🔹 Extract text/html body (prioritized)
+      if (mime === "text/html" && part.body?.data) {
         bodyHtml = decode(part.body.data);
       }
 
-      // ✅ Detect attachments (jangan diutak-atik)
+      // 🔹 Detect and process attachments
       if (part.filename && part.filename.length > 0) {
         hasAttachments = true;
 
         const attachmentInfo = {
           filename: part.filename,
           mimeType: part.mimeType,
-          size: part.body.size || 0,
-          attachmentId: part.body.attachmentId || null,
+          size: part.body?.size || 0,
+          attachmentId: part.body?.attachmentId || null,
           extractedText: "",
         };
 
-        // (PDF handling kalau pakai gmail client, tetap seperti kode kamu sebelumnya)
+        // PDF text extraction if gmail client is available
         if (
           part.mimeType === "application/pdf" &&
-          part.body.attachmentId &&
+          part.body?.attachmentId &&
           gmail
         ) {
           try {
@@ -140,6 +138,21 @@ async function parseMessage(message, gmail = null) {
         attachments.push(attachmentInfo);
       }
     }
+  };
+
+  // 🔹 Handle body di level paling atas (simple email without parts)
+  if (message.payload?.body?.data) {
+    const mime = message.payload.mimeType || "";
+    if (mime.startsWith("text/html")) {
+      bodyHtml = decode(message.payload.body.data);
+    } else if (mime.startsWith("text/plain")) {
+      bodyText = decode(message.payload.body.data);
+    }
+  }
+
+  // 🔹 Handle parts (multipart email) - now with recursive processing
+  if (message.payload.parts) {
+    await processParts(message.payload.parts);
   }
 
   const body = (bodyHtml || bodyText || "").trim();

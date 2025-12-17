@@ -375,7 +375,7 @@ export default function ComposeMailPage() {
                   )}
 
                   {/* Link */}
-                  <div className="mb-6">
+                  {/* <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Link (Optional)
                     </label>
@@ -387,7 +387,7 @@ export default function ComposeMailPage() {
                       placeholder="https://example.com"
                       className="w-full px-4 py-2 border border-gray-300 text-black/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
+                  </div> */}
 
                   {/* Message Body */}
                   <div className="mb-6">
