@@ -18,7 +18,7 @@ import {
   FiTrash2,
 } from "react-icons/fi";
 import emailService from "@/services/mailManagement";
-import ViewMail from "../components/View-Mail/ViewMail";
+import ViewMail from "../components/VIew-mail/ViewMail";
 import ProtectedRoute from "../components/Routes/ProtectedRoutes";
 import AppLayout from "../components/ui/AppLayout";
 

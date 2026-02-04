@@ -12,7 +12,7 @@ import {
   FiEye,
   FiClock,
 } from "react-icons/fi";
-import ViewMail from "../components/View-Mail/ViewMail";
+import ViewMail from "../components/VIew-mail/ViewMail";
 import ProtectedRoute from "../components/Routes/ProtectedRoutes";
 import AppLayout from "../components/ui/AppLayout";
 import {
