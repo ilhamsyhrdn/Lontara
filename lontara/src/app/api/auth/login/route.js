@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prisma from '@/lib/prisma';
+
+// DEMO MODE - Hardcoded admin user (no database needed)
+const DEMO_USER = {
+  id: 'demo-admin-001',
+  username: 'admin',
+  password: 'admin123',
+  email: 'admin@lontara.com',
+  role: 'ADMIN'
+};
 
 export async function POST(request) {
   try {
@@ -14,34 +21,25 @@ export async function POST(request) {
       );
     }
 
-    const user = await prisma.authUser.findUnique({ where: { username } });
-    
-    if (!user) {
-      return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
+    // Demo login - hardcoded credentials
+    if (username === DEMO_USER.username && password === DEMO_USER.password) {
+      const token = jwt.sign(
+        { sub: DEMO_USER.id, username: DEMO_USER.username, role: DEMO_USER.role },
+        process.env.JWT_SECRET || 'demo-secret-key',
+        { expiresIn: '8h' }
       );
+
+      return NextResponse.json({
+        token,
+        user: { id: DEMO_USER.id, username: DEMO_USER.username, role: DEMO_USER.role },
+      });
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    
-    if (!ok) {
-      return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
-      );
-    }
-
-    const token = jwt.sign(
-      { sub: user.id, username: user.username, role: user.role },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '8h' }
+    // Invalid credentials
+    return NextResponse.json(
+      { message: 'Invalid credentials' },
+      { status: 401 }
     );
-
-    return NextResponse.json({
-      token,
-      user: { id: user.id, username: user.username, role: user.role },
-    });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

@@ -20,8 +20,6 @@
     "@mui/x-charts": "^8.14.0",
     "@mui/x-date-pickers": "^8.14.0",
     "@prisma/client": "^6.16.2",
-    "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-node": "^4.22.0",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "compromise": "^14.14.4",
