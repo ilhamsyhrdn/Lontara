@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model AuthUser {
+  id                     String        @id @default(auto()) @map("_id") @db.ObjectId
+  username               String        @unique
+  email                  String?       @unique
+  passwordHash           String?
+  role                   String        @default("STAFF")
+  isEmailVerified        Boolean       @default(false)
+  mustChangePassword     Boolean       @default(true)
+  activationToken        String?
+  activationTokenExpires DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  
+  // Relation to Gmail connection
+  gmailConnection        UserGmail?
+}
+
+model UserGmail {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  authUserId       String   @unique @db.ObjectId
+  authUser         AuthUser @relation(fields: [authUserId], references: [id], onDelete: Cascade)
+  googleEmail      String?
+  googleId         String?
+  encryptedRefresh String?
+  connectedAt      DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model AdminGoogle {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  authUserId       String   @unique @db.ObjectId
+  googleEmail      String?
+  googleId         String?
+  encryptedRefresh String?
+  connectedAt      DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
